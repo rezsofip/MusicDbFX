@@ -24,7 +24,9 @@
             <Button text="Update artist" onAction="#updateArtist"/>
             <Button text="Remove artist" onAction="#removeArtist"/>
             <Button text="Add album" onAction="#addAlbum"/>
+            <Button text="Update album" onAction="#updateAlbum"/>
             <Button text="Remove album" onAction="#removeAlbum"/>
+            <Button text="Add song" onAction="#addSong"/>
             <BorderPane.margin>
                 <Insets top="30"/>
             </BorderPane.margin>

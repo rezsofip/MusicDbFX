@@ -7,12 +7,12 @@ public class Album {
 
     private SimpleIntegerProperty _id;
     private SimpleStringProperty name;
-    private SimpleStringProperty artistName;
+    private SimpleIntegerProperty artistId;
 
-    public Album(int _id, String name, String artistName) {
+    public Album(int _id, String name, int artistId) {
         this._id = new SimpleIntegerProperty(_id);
         this.name = new SimpleStringProperty(name);
-        this.artistName = new SimpleStringProperty(artistName);
+        this.artistId = new SimpleIntegerProperty(artistId);
     }
 
     public int get_id() {
@@ -31,11 +31,11 @@ public class Album {
         return name;
     }
 
-    public String getArtistName() {
-        return artistName.get();
+    public int getArtistId() {
+        return artistId.get();
     }
 
-    public SimpleStringProperty artistNameProperty() {
-        return artistName;
+    public SimpleIntegerProperty artistIdProperty() {
+        return artistId;
     }
 }

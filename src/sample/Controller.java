@@ -6,6 +6,7 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.chart.PieChart;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.stage.Stage;
@@ -16,6 +17,8 @@ import sample.Datamodel.Datasource;
 import sample.Datamodel.Song;
 
 import java.io.IOException;
+import java.sql.ResultSet;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -28,15 +31,20 @@ public class Controller {
    public TableView tableView;
    public static Artist currentlySelectedArtist;
 
+    public static Artist getCurrentlySelectedArtist() {
+        return currentlySelectedArtist;
+    }
+
     public void showAlbumsByArtist() {
-        Artist selectedArtist = null;
+        Artist selectedArtist;
         ObservableList<Album> observableList;
+        List<Album> albumList = new ArrayList<>();
         try {
             selectedArtist = (Artist) tableView.getSelectionModel().getSelectedItem();
         }catch (ClassCastException e) {
             Dialog dialog = new Dialog();
             dialog.setTitle("Error");
-            dialog.contentTextProperty().setValue("No album was selected!");
+            dialog.contentTextProperty().setValue("No artist was selected!");
             System.out.println("No artist selected");
             dialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
             dialog.showAndWait();
@@ -44,12 +52,16 @@ public class Controller {
         }
 
         try{
-            observableList = observableArrayList(Datasource.getInstance().queryAlbumsByArtist(selectedArtist.getName()));
+            albumList = Datasource.getInstance().queryAlbumsByArtist(selectedArtist.getName());
+            observableList = observableArrayList(albumList);
+            for(Album album : albumList) {
+                System.out.println(album.getName());
+            }
         } catch(NullPointerException e) {
             Dialog dialog = new Dialog();
             dialog.setTitle("Error");
-            dialog.contentTextProperty().setValue("No artist was selected!");
-            System.out.println("No artist selected");
+            dialog.contentTextProperty().setValue("No album was found!");
+            System.out.println("No album was found selected");
             dialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
             dialog.showAndWait();
             return;
@@ -65,7 +77,6 @@ public class Controller {
 
         switchToAlbumTableView();
         tableView.setItems(observableList);
-        return;
 
     }
 
@@ -177,7 +188,7 @@ public class Controller {
         TableColumn nameColumn = new TableColumn("Album name");
         nameColumn.setCellValueFactory(new PropertyValueFactory<Album, String>("name"));
         TableColumn artistNameColumn = new TableColumn("Artist name");
-        artistNameColumn.setCellValueFactory(new PropertyValueFactory<Album, String>("artistName"));
+        artistNameColumn.setCellValueFactory(new PropertyValueFactory<Album, Integer>("artistId"));
         this.tableView.getColumns().add(idColumn);
         this.tableView.getColumns().add(nameColumn);
         this.tableView.getColumns().add(artistNameColumn);
@@ -233,7 +244,7 @@ public class Controller {
             this.currentlySelectedArtist = (Artist) tableView.getSelectionModel().getSelectedItem();
             System.out.println("Artist selected");
         }catch(ClassCastException e) {
-            System.out.println("Something went wrong");
+
         }
 
     }
@@ -343,6 +354,8 @@ public class Controller {
                 Optional<ButtonType> resultButton = dialog.showAndWait();
                 if(resultButton.isPresent() && resultButton.get() == ButtonType.YES) {
                     Datasource.getInstance().removeAlbum(selectedAlbum.get_id(), true);
+                    ObservableList<Album> observableList = FXCollections.observableArrayList(Datasource.getInstance().queryAlbumsByArtist(currentlySelectedArtist.getName()));
+                    tableView.setItems(observableList);
                 }
             }
         }catch(ClassCastException e) {
@@ -355,6 +368,104 @@ public class Controller {
             dialog.showAndWait();
         }
 
+    }
+
+    @FXML
+    public void updateAlbum() {
+        try{
+            Album selectedAlbum = (Album) this.tableView.getSelectionModel().getSelectedItem();
+            FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("UpdateAlbum.fxml"));
+            Parent root = fxmlLoader.load();
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.getDialogPane().setContent(root);
+            dialog.setTitle("Update album");
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+            UpdateAlbumController updateAlbumController = fxmlLoader.getController();
+            Optional<ButtonType> resultButton = dialog.showAndWait();
+            if(resultButton.isPresent() && resultButton.get() == ButtonType.OK) {
+                String albumName = updateAlbumController.getTextField().getText();
+                String trimmedAlbumName = albumName.trim();
+                int artistId = selectedAlbum.getArtistId();
+                if(trimmedAlbumName.equals("")) {
+                    Dialog<ButtonType> blankAlbumNameDialog = new Dialog<>();
+                    blankAlbumNameDialog.setTitle("Error");
+                    blankAlbumNameDialog.setContentText("The album name cannot be empty. Please enter another one.");
+                    blankAlbumNameDialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+                    blankAlbumNameDialog.showAndWait();
+                }else {
+                    int result = Datasource.getInstance().albumExistsForArtist(trimmedAlbumName, artistId);
+                    if(result == -1) {
+                        Dialog<ButtonType> blankAlbumNameDialog = new Dialog<>();
+                        blankAlbumNameDialog.setTitle("Error");
+                        blankAlbumNameDialog.setContentText("Couldn't query the album name.");
+                        blankAlbumNameDialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+                        blankAlbumNameDialog.showAndWait();
+                    }else if(result == 1) {
+                        Dialog<ButtonType> blankAlbumNameDialog = new Dialog<>();
+                        blankAlbumNameDialog.setTitle("Error");
+                        blankAlbumNameDialog.setContentText("The entered album name already exists for this artist.");
+                        blankAlbumNameDialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+                        blankAlbumNameDialog.showAndWait();
+                    }else if(result == 0) {
+                        Datasource.getInstance().updateAlbumName(trimmedAlbumName, artistId);
+                        List<Album> albumList = new ArrayList<>();
+                        int artistId2 = selectedAlbum.getArtistId();
+                        albumList.addAll(Datasource.getInstance().queryAlbumsByArtist(Integer.toString(artistId2)));
+                        this.tableView.setItems(FXCollections.observableArrayList(albumList));
+                    }
+                }
+
+            }
+        }catch(ClassCastException e) {
+            e.printStackTrace();
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Error");
+            dialog.setContentText("No album selected. Please select an album you want to update");
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+            dialog.showAndWait();
+        }catch(IOException e) {
+            e.printStackTrace();
+            System.out.println("Couldn't load the fxml file");
+        }
+
+
+    }
+
+    @FXML
+    public void addSong() {
+        try{
+            Album selectedAlbum = (Album) this.tableView.getSelectionModel().getSelectedItem();
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Add song");
+            FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("AddSong.fxml"));
+            Parent root = fxmlLoader.load();
+            dialog.getDialogPane().setContent(root);
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+            Optional<ButtonType> resultButton = dialog.showAndWait();
+            if(resultButton.isPresent() && resultButton.get() == ButtonType.OK) {
+                AddSongController addSongController = fxmlLoader.getController();
+                int numberOfSongs = Datasource.getInstance().numberOfSongs(addSongController.getTextField().getText(), selectedAlbum.get_id());
+                if(numberOfSongs > 0) {
+                    Dialog<ButtonType> dialog2 = new Dialog<>();
+                    dialog2.setTitle("Error");
+                    dialog2.setContentText("A song already exists with this name in the album.");
+                    dialog2.getDialogPane().getButtonTypes().add(ButtonType.OK);
+                    dialog2.showAndWait();
+                }else if(numberOfSongs == 0) {
+                    Datasource.getInstance().insertSong(Datasource.getInstance().nextTrackNumber(selectedAlbum.get_id()), addSongController.getTextField().getText(), selectedAlbum.get_id());
+                }
+            }
+        }catch(ClassCastException e) {
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Error");
+            dialog.setContentText("Please select an album");
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+            dialog.showAndWait();
+        }catch(IOException e) {
+            System.out.println("Couldn't load the fxml file.");
+        }
     }
 
 }

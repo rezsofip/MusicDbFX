@@ -1,5 +1,7 @@
 package sample.Datamodel;
 
+import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleStringProperty;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 
@@ -24,6 +26,11 @@ public class Datasource {
     private PreparedStatement checkNumberOfSongsInAlbum;
     private PreparedStatement removeAlbum;
     private PreparedStatement removeSongsOfAlbum;
+    private PreparedStatement checkIfAlbumExists;
+    private PreparedStatement updateAlbumName;
+    private PreparedStatement checkIfSongExistsInAlbum;
+    private PreparedStatement largestTrackNumber;
+    private PreparedStatement addSong;
 
     private static Datasource instance = new Datasource();
 
@@ -50,8 +57,8 @@ public class Datasource {
     public static final String SONGS_COLUMN_ALBUM = "album";
 
     public static final String QUERY_ARTISTS = "SELECT * FROM " +  ARTISTS_TABLE_NAME;
-    public static final String QUERY_ALBUMS_BY_ARTIST = "SELECT " + ALBUMS_TABLE_NAME + "." + ALBUMS_COLUMN_ID + ", " +  ALBUMS_TABLE_NAME + "." + ALBUMS_COLUMN_NAME + ", " +
-            ALBUMS_TABLE_NAME + "." + ALBUMS_COLUMN_ARTIST + " FROM " +
+    public static final String QUERY_ALBUMS_BY_ARTIST = "SELECT " + ALBUMS_TABLE_NAME + "." + ALBUMS_COLUMN_ID + ", " +  ALBUMS_TABLE_NAME + "." + ALBUMS_COLUMN_NAME +
+            ", " + ALBUMS_TABLE_NAME + "." + ALBUMS_COLUMN_ARTIST + " FROM " +
             ALBUMS_TABLE_NAME + " INNER JOIN " + ARTISTS_TABLE_NAME + " ON " + ALBUMS_TABLE_NAME + "." + ALBUMS_COLUMN_ARTIST + " = " +
             ARTISTS_TABLE_NAME + "." + ARTISTS_COLUMN_ID + " WHERE " + ARTISTS_TABLE_NAME + "." + ARTISTS_COLUMN_NAME + " = ?";
             // SELECT albums.name FROM albums INNER JOIN artists ON albums.artist = artists._id WHERE artists.name = ?;
@@ -96,6 +103,24 @@ public class Datasource {
 
     public static final String REMOVE_SONGS_OF_ALBUM = "DELETE FROM " + SONGS_TABLE_NAME + " WHERE " + SONGS_COLUMN_ALBUM + " = ?;";
 
+    public static final String CHECK_IF_ALBUM_EXISTS = "SELECT * FROM " + ALBUMS_TABLE_NAME + " WHERE " + ALBUMS_COLUMN_NAME + " = ? " + "AND " +
+            ALBUMS_TABLE_NAME + "." + ALBUMS_COLUMN_ARTIST + " = ?;";
+
+    public static final String UPDATE_ALBUM_NAME = "UPDATE " + ALBUMS_TABLE_NAME + " SET " + ALBUMS_COLUMN_ARTIST + " = ?" + " WHERE " + ALBUMS_COLUMN_ARTIST + " = ?";
+
+    public static final String CHECK_IF_SONGS_EXISTS_IN_ALBUM = "SELECT COUNT(*) FROM " + SONGS_TABLE_NAME + " WHERE " +
+            SONGS_TABLE_NAME + "." + SONGS_COLUMN_ALBUM + " = ?" + " AND " + SONGS_TABLE_NAME + "." + SONGS_COLUMN_TITLE + " = ?;";
+
+    public static final String LARGEST_TRACK_NUMBER = "SELECT MAX(" + SONGS_TABLE_NAME + "." + SONGS_COLUMN_TRACK + ") FROM " + SONGS_TABLE_NAME +
+            " WHERE " + SONGS_TABLE_NAME + "." + SONGS_COLUMN_ALBUM + " = ?;";
+
+    /*
+    SELECT MAX(songs.track) FROM songs WHERE songs.album = ?
+    */
+
+    public static final String ADD_SONG = "INSERT INTO " + SONGS_TABLE_NAME + "(" + SONGS_COLUMN_TRACK + ", " + SONGS_COLUMN_TITLE + ", " + SONGS_COLUMN_ALBUM + ")"
+            + " VALUES(" + "?" + ", " + "?" + ", " + "?" +");";
+
     public Connection getConnection() {
         return connection;
     }
@@ -116,6 +141,11 @@ public class Datasource {
             checkNumberOfSongsInAlbum = connection.prepareStatement(CHECK_SONG_NUMBERS_OF_ALBUM);
             removeAlbum = connection.prepareStatement(REMOVE_ALBUM);
             removeSongsOfAlbum = connection.prepareStatement(REMOVE_SONGS_OF_ALBUM);
+            checkIfAlbumExists = connection.prepareStatement(CHECK_IF_ALBUM_EXISTS);
+            updateAlbumName = connection.prepareStatement(UPDATE_ALBUM_NAME);
+            checkIfSongExistsInAlbum = connection.prepareStatement(CHECK_IF_SONGS_EXISTS_IN_ALBUM);
+            largestTrackNumber = connection.prepareStatement(LARGEST_TRACK_NUMBER);
+            addSong = connection.prepareStatement(ADD_SONG);
 
             return true;
         }catch(SQLException e) {
@@ -139,6 +169,11 @@ public class Datasource {
             addAlbum.close();
             checkNumberOfSongsInAlbum.close();
             removeAlbum.close();
+            checkIfAlbumExists.close();
+            updateAlbumName.close();
+            checkIfSongExistsInAlbum.close();
+            largestTrackNumber.close();
+            addSong.close();
 
             connection.close();
             return true;
@@ -181,19 +216,21 @@ public class Datasource {
         try{
             queryAlbumsByArtist.setString(1, artistName);
             ResultSet resultSet = queryAlbumsByArtist.executeQuery();
-            if(resultSet.next() == false) {
+            boolean resultNext = resultSet.next();
+            if(!resultNext) {
                 System.out.println("No album was found");
                 return null;
             }
 
             List<Album> albumList = new ArrayList<>();
-            while(resultSet.next()) {
+            do{
                 int albumId = resultSet.getInt(1);
                 String albumName = resultSet.getString(2);
-                String artist = resultSet.getString(3);
-                Album album = new Album(albumId, albumName, artist);
+                String artistId = resultSet.getString(3);
+                int artistIdInt = Integer.parseInt(artistId);
+                Album album = new Album(albumId, albumName, artistIdInt);
                 albumList.add(album);
-            }
+            }while(resultSet.next());
 
             return albumList;
 
@@ -396,6 +433,104 @@ public class Datasource {
                 dialog.showAndWait();
                 return false;
             }
+        }
+
+    }
+
+    public int albumExistsForArtist(String albumName, int artistId) {
+        try{
+            checkIfAlbumExists.setString(1, albumName);
+            checkIfAlbumExists.setString(2, Integer.toString(artistId));
+            ResultSet result = checkIfAlbumExists.executeQuery();
+            if(result.next()) {
+                return 1;
+            }else {
+                return 0;
+            }
+        }catch(SQLException e) {
+            e.printStackTrace();
+            System.out.println("SQL query error");
+            return -1;
+        }
+
+    }
+
+    public boolean updateAlbumName(String albumName, int artistId) {
+
+        try{
+            updateAlbumName.setString(1, albumName);
+            updateAlbumName.setString(2, Integer.toString(artistId));
+            updateAlbumName.execute();
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Album name updated");
+            dialog.setContentText("The album name has been successfully updated to " + albumName);
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+            dialog.showAndWait();
+            return true;
+        }catch(SQLException e) {
+            e.printStackTrace();
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Error");
+            dialog.setContentText("SQL error");
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+            dialog.showAndWait();
+            return false;
+        }
+
+
+    }
+
+    public int numberOfSongs(String songTitle, int albumId) {
+        try{
+            this.checkIfSongExistsInAlbum.setString(1, Integer.toString(albumId));
+            this.checkIfSongExistsInAlbum.setString(2, songTitle);
+            ResultSet resultSet = this.checkIfSongExistsInAlbum.executeQuery();
+            resultSet.next();
+            int numberOfSongs = resultSet.getInt(1);
+            return numberOfSongs;
+
+        }catch(SQLException e) {
+            System.out.println("SQL problem occurred.");
+            return -1;
+        }
+
+    }
+
+    public int nextTrackNumber(int albumId) {
+        try{
+            this.largestTrackNumber.setString(1, Integer.toString(albumId));
+            ResultSet resultSet = largestTrackNumber.executeQuery();
+            resultSet.next();
+            int nextTrackNumber = resultSet.getInt(1) + 1;
+            return nextTrackNumber;
+        }catch(SQLException e) {
+            System.out.println("SQL error occurred.");
+            return -1;
+        }
+
+    }
+
+    public void insertSong(int trackNumber, String songTitle, int albumId) {
+        try{
+            this.addSong.setString(1, Integer.toString(trackNumber));
+            this.addSong.setString(2, songTitle);
+            this.addSong.setString(3, Integer.toString(albumId));
+            this.addSong.execute();
+
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Song added");
+            dialog.setContentText(songTitle + " has been successfully added to the album with track number #" + trackNumber);
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+            dialog.showAndWait();
+
+        }catch(SQLException e) {
+            System.out.println("SQL problem occurred.");
+
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Error");
+            dialog.setContentText("SQL error occurred");
+            dialog.getDialogPane().getButtonTypes().add(ButtonType.OK);
+            dialog.showAndWait();
         }
 
     }
